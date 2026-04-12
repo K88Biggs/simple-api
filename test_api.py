@@ -126,6 +126,35 @@ def test_create_item_validation_error(api_server):
     assert "Price must be greater than 0" in body["errors"]
 
 
+def test_create_item_missing_required_fields(api_server):
+    status, body = make_request(
+        "POST",
+        f"{api_server['base_url']}/items",
+        data={},
+        headers=api_server["headers"],
+    )
+
+    assert status == 400
+    assert "Name is required" in body["errors"]
+    assert "Price is required" in body["errors"]
+
+
+def test_create_item_invalid_json(api_server):
+    req = request.Request(
+        url=f"{api_server['base_url']}/items",
+        data=b"{invalid-json",
+        headers=api_server["headers"],
+        method="POST",
+    )
+
+    with pytest.raises(error.HTTPError) as exc_info:
+        request.urlopen(req)
+
+    assert exc_info.value.code == 400
+    response_body = json.loads(exc_info.value.read().decode("utf-8"))
+    assert response_body["error"] == "Invalid JSON"
+
+
 def test_get_all_items(api_server):
     payload = {
         "name": "Mouse",
@@ -175,6 +204,13 @@ def test_get_missing_item(api_server):
 
     assert status == 404
     assert body["error"] == "Item not found"
+
+
+def test_get_item_invalid_id(api_server):
+    status, body = make_request("GET", f"{api_server['base_url']}/items/not-a-number")
+
+    assert status == 400
+    assert body["error"] == "Invalid ID"
 
 
 def test_filter_items_by_name(api_server):
@@ -255,6 +291,108 @@ def test_update_item(api_server):
     assert body["in_stock"] is False
 
 
+def test_update_item_unauthorized(api_server):
+    create_payload = {
+        "name": "Headset",
+        "description": "Noise cancelling headset",
+        "price": 149.99,
+        "in_stock": True,
+    }
+
+    make_request(
+        "POST",
+        f"{api_server['base_url']}/items",
+        data=create_payload,
+        headers=api_server["headers"],
+    )
+
+    status, body = make_request(
+        "PUT",
+        f"{api_server['base_url']}/items/1",
+        data=create_payload,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert status == 401
+    assert body["error"] == "Unauthorized"
+
+
+def test_update_item_invalid_json(api_server):
+    create_payload = {
+        "name": "Headset",
+        "description": "Noise cancelling headset",
+        "price": 149.99,
+        "in_stock": True,
+    }
+
+    make_request(
+        "POST",
+        f"{api_server['base_url']}/items",
+        data=create_payload,
+        headers=api_server["headers"],
+    )
+
+    req = request.Request(
+        url=f"{api_server['base_url']}/items/1",
+        data=b"{invalid-json",
+        headers=api_server["headers"],
+        method="PUT",
+    )
+
+    with pytest.raises(error.HTTPError) as exc_info:
+        request.urlopen(req)
+
+    assert exc_info.value.code == 400
+    response_body = json.loads(exc_info.value.read().decode("utf-8"))
+    assert response_body["error"] == "Invalid JSON"
+
+
+def test_update_item_preserves_created_at_and_changes_updated_at(api_server):
+    create_payload = {
+        "name": "Headset",
+        "description": "Noise cancelling headset",
+        "price": 149.99,
+        "in_stock": True,
+    }
+
+    _, created = make_request(
+        "POST",
+        f"{api_server['base_url']}/items",
+        data=create_payload,
+        headers=api_server["headers"],
+    )
+
+    time.sleep(0.01)
+
+    status, updated = make_request(
+        "PUT",
+        f"{api_server['base_url']}/items/1",
+        data={
+            "name": "Updated Headset",
+            "description": "Updated description",
+            "price": 159.99,
+            "in_stock": False,
+        },
+        headers=api_server["headers"],
+    )
+
+    assert status == 200
+    assert updated["created_at"] == created["created_at"]
+    assert updated["updated_at"] != created["updated_at"]
+
+
+def test_update_wrong_route_returns_not_found(api_server):
+    status, body = make_request(
+        "PUT",
+        f"{api_server['base_url']}/orders/1",
+        data={"name": "Nope", "price": 10},
+        headers=api_server["headers"],
+    )
+
+    assert status == 404
+    assert body["error"] == "Route not found"
+
+
 def test_delete_item(api_server):
     payload = {
         "name": "Printer",
@@ -282,6 +420,38 @@ def test_delete_item(api_server):
     status, body = make_request("GET", f"{api_server['base_url']}/items/1")
     assert status == 404
     assert body["error"] == "Item not found"
+
+
+def test_delete_item_unauthorized(api_server):
+    payload = {
+        "name": "Printer",
+        "description": "Office printer",
+        "price": 249.99,
+        "in_stock": True,
+    }
+
+    make_request(
+        "POST",
+        f"{api_server['base_url']}/items",
+        data=payload,
+        headers=api_server["headers"],
+    )
+
+    status, body = make_request("DELETE", f"{api_server['base_url']}/items/1")
+
+    assert status == 401
+    assert body["error"] == "Unauthorized"
+
+
+def test_delete_wrong_route_returns_not_found(api_server):
+    status, body = make_request(
+        "DELETE",
+        f"{api_server['base_url']}/orders/1",
+        headers={"x-api-key": app.API_KEY},
+    )
+
+    assert status == 404
+    assert body["error"] == "Route not found"
 
 
 def test_data_persists_to_json_file(api_server):

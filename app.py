@@ -59,6 +59,9 @@ def validate_item(body):
 
     return errors
 
+def is_item_detail_route(path_parts):
+    return len(path_parts) == 2 and path_parts[0] == "items"
+
 def is_authorized(handler):
     return handler.headers.get("x-api-key") == API_KEY
 
@@ -139,6 +142,9 @@ class SimpleAPIHandler(BaseHTTPRequestHandler):
             send_json(self, 400, {"error": "Invalid JSON"})
             return
 
+        if body is None:
+            body = {}
+
         errors = validate_item(body)
         if errors:
             send_json(self, 400, {"errors": errors})
@@ -165,7 +171,7 @@ class SimpleAPIHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path_parts = parsed.path.strip("/").split("/")
 
-        if len(path_parts) != 2:
+        if not is_item_detail_route(path_parts):
             send_json(self, 404, {"error": "Route not found"})
             return
 
@@ -184,6 +190,13 @@ class SimpleAPIHandler(BaseHTTPRequestHandler):
             return
 
         body = parse_json_body(self)
+
+        if body == "INVALID_JSON":
+            send_json(self, 400, {"error": "Invalid JSON"})
+            return
+
+        if body is None:
+            body = {}
 
         errors = validate_item(body)
         if errors:
@@ -210,7 +223,7 @@ class SimpleAPIHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path_parts = parsed.path.strip("/").split("/")
 
-        if len(path_parts) != 2:
+        if not is_item_detail_route(path_parts):
             send_json(self, 404, {"error": "Route not found"})
             return
 
