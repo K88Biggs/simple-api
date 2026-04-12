@@ -2,3 +2,8 @@ items.json
 __pycache__/
 *.pyc
 .env
+.tmp/
+.pytest_cache/
+pytest-cache-files-*/
+api.out.log
+api.err.log
