@@ -10,6 +10,11 @@ import app
 from http.server import HTTPServer
 
 
+PERF_ITEM_COUNT = 100
+PERF_CREATE_MAX_SECONDS = 3.0
+PERF_QUERY_MAX_SECONDS = 0.5
+
+
 def make_request(method, url, data=None, headers=None):
     headers = headers or {}
     body = None
@@ -58,6 +63,22 @@ def api_server(tmp_path):
     server.shutdown()
     server.server_close()
     thread.join(timeout=1)
+
+
+def seed_items(api_server, count, name_prefix="Item", in_stock=True):
+    for index in range(count):
+        status, _ = make_request(
+            "POST",
+            f"{api_server['base_url']}/items",
+            data={
+                "name": f"{name_prefix} {index}",
+                "description": f"Seed item {index}",
+                "price": index + 1,
+                "in_stock": in_stock,
+            },
+            headers=api_server["headers"],
+        )
+        assert status == 201
 
 
 def test_health_check(api_server):
@@ -475,3 +496,30 @@ def test_data_persists_to_json_file(api_server):
     assert "items" in saved_data
     assert "1" in saved_data["items"]
     assert saved_data["items"]["1"]["name"] == "Webcam"
+
+
+def test_create_items_performance(api_server):
+    started_at = time.perf_counter()
+
+    seed_items(api_server, PERF_ITEM_COUNT)
+
+    elapsed = time.perf_counter() - started_at
+
+    assert len(app.items) == PERF_ITEM_COUNT
+    assert elapsed < PERF_CREATE_MAX_SECONDS
+
+
+def test_filtered_query_performance(api_server):
+    seed_items(api_server, PERF_ITEM_COUNT, name_prefix="Monitor", in_stock=True)
+    seed_items(api_server, PERF_ITEM_COUNT, name_prefix="Dock", in_stock=False)
+
+    started_at = time.perf_counter()
+    status, body = make_request(
+        "GET",
+        f"{api_server['base_url']}/items?name=monitor&in_stock=true",
+    )
+    elapsed = time.perf_counter() - started_at
+
+    assert status == 200
+    assert len(body) == PERF_ITEM_COUNT
+    assert elapsed < PERF_QUERY_MAX_SECONDS

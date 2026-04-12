@@ -41,6 +41,11 @@ def parse_json_body(handler):
     except json.JSONDecodeError:
         return "INVALID_JSON"
 
+def discard_request_body(handler):
+    content_length = int(handler.headers.get("Content-Length", 0))
+    if content_length > 0:
+        handler.rfile.read(content_length)
+
 def validate_item(body):
     errors = []
 
@@ -129,10 +134,12 @@ class SimpleAPIHandler(BaseHTTPRequestHandler):
         global next_id
 
         if self.path != "/items":
+            discard_request_body(self)
             send_json(self, 404, {"error": "Route not found"})
             return
 
         if not is_authorized(self):
+            discard_request_body(self)
             send_json(self, 401, {"error": "Unauthorized"})
             return
 
@@ -172,10 +179,12 @@ class SimpleAPIHandler(BaseHTTPRequestHandler):
         path_parts = parsed.path.strip("/").split("/")
 
         if not is_item_detail_route(path_parts):
+            discard_request_body(self)
             send_json(self, 404, {"error": "Route not found"})
             return
 
         if not is_authorized(self):
+            discard_request_body(self)
             send_json(self, 401, {"error": "Unauthorized"})
             return
 
